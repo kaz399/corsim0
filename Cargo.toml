@@ -1,0 +1,6 @@
+[package]
+name = "corsim0"
+version = "0.1.0"
+authors = ["Kazuhiro.Yabe <Kazuhiro.Yabe@gmail.com>"]
+
+[dependencies]

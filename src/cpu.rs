@@ -1,5 +1,5 @@
-use device::SystemMap;
-use device::SystemMapAccess;
+use crate::device::SystemMap;
+use crate::device::SystemMapAccess;
 
 #[derive(Debug)]
 pub struct ResultAndFlags {
@@ -218,6 +218,10 @@ fn add_with_carry(a: u32, b: u32, carry: u32) -> ResultAndFlags {
     r
 }
 
+fn set_if_then_block(cond: u8, mask: u8) {
+    
+}
+
 fn b32_fmt(bin: u32) -> String {
     let mut bin_tmp: u32 = bin;
     let mut bin_str: String = format!("{:04b}", bin_tmp & 0b1111);
@@ -341,10 +345,10 @@ fn store_word_immediate_offset(bytecode: u16, system: &mut M0System) -> u32 {
     // Ref: Thumb-2SupplementReferenceManual.pdf p.421
     println!("\t Store word immediate offset");
     let imm: u16 = (bytecode >> 6) & 0b11111;
-    let regnum_index: usize = ((bytecode >> 3) & 0b111) as usize;
+    let regnum_base: usize = ((bytecode >> 3) & 0b111) as usize;
     let regnum_target: usize = (bytecode & 0b111) as usize;
 
-    println!("\t\t str r{}, [r{}, #{}]", regnum_target, regnum_index, imm);
+    println!("\t\t str r{}, [r{}, #{}]", regnum_target, regnum_base, imm);
     not_impremented(system)
 }
 
@@ -522,12 +526,51 @@ fn instruction_32bit_11101(bytecode: u16, system: &mut M0System) -> u32 {
 
 // 1111 x[13]
 fn instruction_32bit_1111(bytecode: u16, system: &mut M0System) -> u32 {
+    // Ref: Thumb-2SupplementReferenceManual.pdf p.52
     println!("\t 32-bit instruction (1111)");
+    let bytecode32: u32 = system.system_map.read32(system.cpu.pc).unwrap();
+    println!("\t bytecode 32bit {:08x}", bytecode32);
+    match (bytecode >> 11) & 0b1 {
+        0b0 => data_processing_instructions_32(bytecode32, system),
+        0b1 => load_and_store_single_data_item_32(bytecode32, system),
+        _ => found_bug(bytecode, system),
+    }
+}
+
+fn data_processing_instructions_32(bytecode32: u32, system: &mut M0System) -> u32 {
     not_impremented(system)
+}
+
+fn load_and_store_single_data_item_32(bytecode32: u32, system: &mut M0System) -> u32 {
+    // Ref: Thumb-2SupplementReferenceManual.pdf p.66
+    println!("\t Load and store single data item, and memory hints");
+    let load: u32 = (bytecode32 >> 20) & 0b1;
+    let signed: u32 = (bytecode32 >> 24) & 0b1;
+    let upward: u32 = (bytecode32 >> 23) & 0b1;
+    let size: u32 = (bytecode32 >> 21) & 0b11;
+    let regnum_base: u32 = (bytecode32 >> 16) & 0b1111;   // Rn
+    let regnum_target: u32 = (bytecode32 >> 12) & 0b1111; // Rt
+    let regnum_offset: u32 = bytecode32 & 0b1111; // Rm
+    let imm: u32 = bytecode32 & 0b111111111111;
+
+    match regnum_base {
+        // 11111 00 S U size[2] 1 1111 Rt[4] imm12[12]
+        0b1111 => load_store_32_format_1(), // p.186
+        _ => not_impremented(system),
+    }
+}
+
+fn load_store_32_format_1() -> u32 {
+    0
 }
 
 fn decode_error(bytecode: u16, system: &mut M0System) -> u32 {
     println!("\t DECODE_ERROR:{:08b}", bytecode);
+    unpredicable(system)
+}
+
+fn found_bug(bytecode: u16, system: &mut M0System) -> u32 {
+    println!("\t (SYSTEM_ERROR:FOUND BUG):{:08b}", bytecode);
     unpredicable(system)
 }
 
@@ -559,7 +602,7 @@ fn cbnz(bytecode: u16, system: &mut M0System) -> u32 {
 }
 
 fn push(bytecode: u16, system: &mut M0System) -> u32 {
-    // Ref: Thumb-2SupplementReferencemanual.pdf p.295
+// Ref: Thumb-2SupplementReferencemanual.pdf p.295
     let reglist: u16 = (bytecode & 0xff) as u16;
     println!("\t push reglist:{}", b16_fmt(reglist));
     if reglist == 0 {

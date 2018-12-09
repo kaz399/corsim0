@@ -5,11 +5,10 @@ use std::io::Read;
 use std::process::exit;
 
 mod cpu;
-use cpu::SystemCtrl;
-
 mod device;
-use device::SystemMap;
-use device::SystemMapAccess;
+
+use crate::cpu::SystemCtrl;
+use crate::device::SystemMapAccess;
 
 const ROMADDR: u32 = 0x00000000;
 const ROMSIZE: usize = 128 * 1024;
@@ -57,7 +56,7 @@ fn main() {
                 Err(e) => println!("errro: {}", e),
             }
 
-            let mut device_map: SystemMap = SystemMap { map: Vec::new() };
+            let mut device_map :device::SystemMap = device::SystemMap { map: Vec::new() };
             device_map.register_device(ram);
             device_map.register_device(rom);
 

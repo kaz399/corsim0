@@ -1,8 +1,8 @@
-use std::boxed::Box;
-
+mod cpu;
 mod device;
-use device::DeviceAccess;
-use device::SystemMapAccess;
+
+use crate::cpu::SystemCtrl;
+use crate::device::SystemMapAccess;
 
 const ROMADDR: u32 = 0x00000000;
 const ROMSIZE: usize = 128;

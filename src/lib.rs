@@ -1,7 +1,7 @@
 mod cpu;
+mod cpuflag;
 mod device;
 
-use crate::cpu::SystemCtrl;
 use crate::device::SystemMapAccess;
 
 const ROMADDR: u32 = 0x00000000;
@@ -35,8 +35,7 @@ fn ram_write_read() {
         assert_eq!(write_val, read_val);
         if write_val == 0xfe {
             write_val = 0;
-        }
-        else {
+        } else {
             write_val += 1;
         }
     }
@@ -65,8 +64,7 @@ fn rom_write() {
         let rom_val = system_map.read8(adrs).unwrap();
         system_map.write8(adrs, rom_val + 1);
         let rom_val2 = system_map.read8(adrs).unwrap();
-        // ROM is unwritable 
+        // ROM is unwritable
         assert_eq!(rom_val, rom_val2);
     }
 }
-

@@ -1,30 +1,8 @@
+use crate::cpuflag::add_with_carry;
+use crate::cpuflag::ArmV6m;
+use crate::cpuflag::CalcFlags;
 use crate::device::SystemMap;
 use crate::device::SystemMapAccess;
-
-#[derive(Debug)]
-pub struct ResultAndFlags {
-    pub result: u32,
-    pub n: u32,
-    pub z: u32,
-    pub c: u32,
-    pub v: u32,
-    pub q: u32,
-    pub apsr: u32,
-}
-
-impl Default for ResultAndFlags {
-    fn default() -> Self {
-        Self {
-            result: 0,
-            n: 0,
-            z: 0,
-            c: 0,
-            v: 0,
-            q: 0,
-            apsr: 0,
-        }
-    }
-}
 
 pub struct CortexM0 {
     pub r: [u32; 13],
@@ -196,30 +174,6 @@ fn get_thumb_instruction(system: &mut M0System) -> u32 {
             },
         },
     }
-}
-
-fn add_with_carry(a: u32, b: u32, carry: u32) -> ResultAndFlags {
-    let a64: i64 = a as i64;
-    let b64: i64 = b as i64;
-    let c64: i64 = carry as i64;
-    let r64: i64 = a64 + b64 + c64;
-    let mut r: ResultAndFlags = ResultAndFlags::default();
-
-    r.result = (r64 & 0xffffffff) as u32;
-    match r64 {
-        val if val < 0 => r.n = 1,
-        val if val == 0 => r.z = 1,
-        val if (val & 0x00010000) != 0 => r.c = 1,
-        val if (a & 0x80000000) != (val & 0x80000000) as u32 => r.v = 1,
-        _ => (),
-    }
-    r.apsr = (r.n << 31) | (r.z << 30) | (r.c << 29) | (r.v << 28) | (r.q << 27);
-    println!("\t Result:{:08x}\n\t {:?}", r.result, r);
-    r
-}
-
-fn set_if_then_block(cond: u8, mask: u8) {
-    
 }
 
 fn b32_fmt(bin: u32) -> String {
@@ -406,9 +360,9 @@ fn add_to_sp(bytecode: u16, system: &mut M0System) -> u32 {
     let imm: u16 = bytecode & 0b11111111;
     let imm32: u32 = (imm << 2) as u32;
     println!("\t\t add  r{}, sp, #{}", regnum, imm32);
-    let r: ResultAndFlags = add_with_carry(system.cpu.sp[system.cpu.ctrl_spsel], imm32, 0);
+    let r: ArmV6m = add_with_carry(system.cpu.sp[system.cpu.ctrl_spsel], imm32, 0);
     system.cpu.r[regnum] = r.result;
-    system.cpu.apsr = r.apsr;
+    system.cpu.apsr = r.flags_to_apsr();
     system.cpu.pc += 2;
     1
 }
@@ -462,15 +416,15 @@ fn adjust_stack_pointer(bytecode: u16, system: &mut M0System) -> u32 {
     if opc == 0 {
         // Ref: Thumb-2SupplementReferencemanual.pdf p.108
         println!("\t\t add  sp, sp, #{}", imm32);
-        let r: ResultAndFlags = add_with_carry(system.cpu.sp[system.cpu.ctrl_spsel], imm32, 0);
+        let r: ArmV6m = add_with_carry(system.cpu.sp[system.cpu.ctrl_spsel], imm32, 0);
         system.cpu.sp[system.cpu.ctrl_spsel] = r.result;
-        system.cpu.apsr = r.apsr;
+        system.cpu.apsr = r.flags_to_apsr();
     } else {
         // Ref: Thumb-2SupplementReferencemanual.pdf p.453
         println!("\t\t sub  sp, sp, #-{}", imm32);
-        let r: ResultAndFlags = add_with_carry(system.cpu.sp[system.cpu.ctrl_spsel], !imm32, 1);
+        let r: ArmV6m = add_with_carry(system.cpu.sp[system.cpu.ctrl_spsel], !imm32, 1);
         system.cpu.sp[system.cpu.ctrl_spsel] = r.result;
-        system.cpu.apsr = r.apsr;
+        system.cpu.apsr = r.flags_to_apsr();
     }
     system.cpu.pc += 2;
     1
@@ -548,7 +502,7 @@ fn load_and_store_single_data_item_32(bytecode32: u32, system: &mut M0System) ->
     let signed: u32 = (bytecode32 >> 24) & 0b1;
     let upward: u32 = (bytecode32 >> 23) & 0b1;
     let size: u32 = (bytecode32 >> 21) & 0b11;
-    let regnum_base: u32 = (bytecode32 >> 16) & 0b1111;   // Rn
+    let regnum_base: u32 = (bytecode32 >> 16) & 0b1111; // Rn
     let regnum_target: u32 = (bytecode32 >> 12) & 0b1111; // Rt
     let regnum_offset: u32 = bytecode32 & 0b1111; // Rm
     let imm: u32 = bytecode32 & 0b111111111111;
@@ -602,7 +556,7 @@ fn cbnz(bytecode: u16, system: &mut M0System) -> u32 {
 }
 
 fn push(bytecode: u16, system: &mut M0System) -> u32 {
-// Ref: Thumb-2SupplementReferencemanual.pdf p.295
+    // Ref: Thumb-2SupplementReferencemanual.pdf p.295
     let reglist: u16 = (bytecode & 0xff) as u16;
     println!("\t push reglist:{}", b16_fmt(reglist));
     if reglist == 0 {

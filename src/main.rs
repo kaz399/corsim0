@@ -1,10 +1,10 @@
-use std::boxed::Box;
 use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::process::exit;
 
 mod cpu;
+mod cpuflag;
 mod device;
 
 use crate::cpu::SystemCtrl;
@@ -56,7 +56,7 @@ fn main() {
                 Err(e) => println!("errro: {}", e),
             }
 
-            let mut device_map :device::SystemMap = device::SystemMap { map: Vec::new() };
+            let mut device_map: device::SystemMap = device::SystemMap { map: Vec::new() };
             device_map.register_device(ram);
             device_map.register_device(rom);
 

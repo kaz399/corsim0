@@ -25,8 +25,8 @@ impl Default for ArmV6m {
 
 pub trait CalcFlags {
     fn new(apsr: u32) -> ArmV6m;
-    fn flags_to_apsr(self) -> u32;
-    fn cond(self, cond: u32) -> (bool, &'static str);
+    fn flags_to_apsr(&self) -> u32;
+    fn cond(&self, cond: u32) -> (bool, String);
 }
 
 impl CalcFlags for ArmV6m {
@@ -42,31 +42,31 @@ impl CalcFlags for ArmV6m {
         }
     }
 
-    fn flags_to_apsr(self) -> u32 {
+    fn flags_to_apsr(&self) -> u32 {
         let mut apsr: u32 =
-            &(self.n << 31) | &(self.z << 30) | &(self.c << 29) | &(self.v << 28) | &(self.q << 27);
-        apsr |= &self.apsr & 0b0000011111111111111111111111111;
+            self.n << 31 | self.z << 30 | self.c << 29 | self.v << 28 | self.q << 27;
+        apsr |= self.apsr & 0b0000011111111111111111111111111;
         apsr
     }
 
-    fn cond(self, cond: u32) -> (bool, &'static str) {
+    fn cond(&self, cond: u32) -> (bool, String) {
         match cond & 0b1111 {
-            0b0000 => (self.z == 1, "eq"),
-            0b0001 => (self.z == 0, "ne"),
-            0b0010 => (self.c == 1, "cs"),
-            0b0011 => (self.c == 0, "cc"),
-            0b0100 => (self.n == 1, "mi"),
-            0b0101 => (self.n == 0, "pl"),
-            0b0110 => (self.v == 1, "vs"),
-            0b0111 => (self.v == 0, "vc"),
-            0b1000 => (self.c == 1 && self.z == 0, "hi"),
-            0b1001 => (self.c == 0 && self.z == 1, "ls"),
-            0b1010 => (self.n == self.v, "ge"),
-            0b1011 => (self.n != self.v, "lt"),
-            0b1100 => ((self.z == 0 && (self.n != self.v)), "gt"),
-            0b1101 => ((self.z == 1 && (self.n == self.v)), "le"),
-            0b1110 => (true, "al"),
-            _ => (false, "*UNDEFINED*"),
+            0b0000 => (self.z == 1, "eq".to_string()),
+            0b0001 => (self.z == 0, "ne".to_string()),
+            0b0010 => (self.c == 1, "cs".to_string()),
+            0b0011 => (self.c == 0, "cc".to_string()),
+            0b0100 => (self.n == 1, "mi".to_string()),
+            0b0101 => (self.n == 0, "pl".to_string()),
+            0b0110 => (self.v == 1, "vs".to_string()),
+            0b0111 => (self.v == 0, "vc".to_string()),
+            0b1000 => (self.c == 1 && self.z == 0, "hi".to_string()),
+            0b1001 => (self.c == 0 && self.z == 1, "ls".to_string()),
+            0b1010 => (self.n == self.v, "ge".to_string()),
+            0b1011 => (self.n != self.v, "lt".to_string()),
+            0b1100 => (self.z == 0 && self.n != self.v, "gt".to_string()),
+            0b1101 => (self.z == 1 && self.n == self.v, "le".to_string()),
+            0b1110 => (true, "al".to_string()),
+            _ => (false, "*UNDEFINED*".to_string()),
         }
     }
 }
@@ -92,10 +92,10 @@ impl Default for IfThenFlags {
 
 pub trait IfThenCtrl {
     fn new(apsr: u32, epsr: u32) -> IfThenFlags;
-    fn in_it_block(self) -> bool;
-    fn last_in_it_block(self) -> bool;
+    fn in_it_block(&self) -> bool;
+    fn last_in_it_block(&self) -> bool;
     fn update_epsr(&mut self) -> u32;
-    fn cond(self) -> (bool, &'static str);
+    fn cond(&self) -> (bool, String);
 }
 
 impl IfThenCtrl for IfThenFlags {
@@ -103,27 +103,25 @@ impl IfThenCtrl for IfThenFlags {
         let upper_bit: u32 = (epsr >> 25) & 0b11;
         let lower_bit: u32 = (epsr >> 10) & 0b111111;
         let itstate: u32 = (upper_bit << 6) | lower_bit;
-        let mut it: IfThenFlags = IfThenFlags {
+        let mut encode: u32 = 0b00000;
+        if (itstate >> 5) & 0b111 != 0b000 {
+            encode = (itstate & 0b11110) | 0b00001;
+        }
+        IfThenFlags {
             cond: (itstate >> 5) & 0b111,
-            encode: 0,
+            encode: encode,
             epsr: epsr,
             flags: ArmV6m {
                 ..ArmV6m::new(apsr)
             },
-        };
-        if it.cond == 0b000 {
-            it.encode = 0b00000;
-        } else {
-            it.encode = (itstate & 0b11110) | 0b00001;
         }
-        it
     }
 
-    fn in_it_block(self) -> bool {
+    fn in_it_block(&self) -> bool {
         self.encode & 0b01111 != 0
     }
 
-    fn last_in_it_block(self) -> bool {
+    fn last_in_it_block(&self) -> bool {
         self.encode & 0b01111 == 0b01000
     }
 
@@ -140,7 +138,7 @@ impl IfThenCtrl for IfThenFlags {
         self.epsr
     }
 
-    fn cond(self) -> (bool, &'static str) {
+    fn cond(&self) -> (bool, String) {
         let encode_bit = self.encode & 0b1;
         let cond = self.cond << 1 | encode_bit;
         self.flags.cond(cond)
@@ -167,136 +165,273 @@ pub fn add_with_carry(a: u32, b: u32, carry: u32) -> ArmV6m {
     r
 }
 
-#[test]
-fn test_arm_v6_flags_1() {
-    let flag: ArmV6m = { ArmV6m::default() };
-    println!("{:?}", flag);
-    assert_eq!(flag.result, 0);
-    assert_eq!(flag.n, 0);
-    assert_eq!(flag.z, 0);
-    assert_eq!(flag.c, 0);
-    assert_eq!(flag.v, 0);
-    assert_eq!(flag.q, 0);
-    assert_eq!(flag.apsr, 0);
-    let flag1: u32 = flag.apsr;
-    let flag2: u32 = flag.flags_to_apsr();
-    assert_eq!(flag1, flag2);
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn test_arm_v6_flags_2() {
-    let flag: ArmV6m = { ArmV6m::new(0) };
-    println!("{:?}", flag);
-    assert_eq!(flag.result, 0);
-    assert_eq!(flag.n, 0);
-    assert_eq!(flag.z, 0);
-    assert_eq!(flag.c, 0);
-    assert_eq!(flag.v, 0);
-    assert_eq!(flag.q, 0);
-    assert_eq!(flag.apsr, 0);
-    let flag1: u32 = flag.apsr;
-    let flag2: u32 = flag.flags_to_apsr();
-    assert_eq!(flag1, flag2);
-}
+    #[test]
+    fn test_arm_v6_flags_1() {
+        let flag: ArmV6m = { ArmV6m::default() };
+        println!("{:?}", flag);
+        assert_eq!(flag.result, 0);
+        assert_eq!(flag.n, 0);
+        assert_eq!(flag.z, 0);
+        assert_eq!(flag.c, 0);
+        assert_eq!(flag.v, 0);
+        assert_eq!(flag.q, 0);
+        assert_eq!(flag.apsr, 0);
+        let flag1: u32 = flag.flags_to_apsr();
+        let flag2: u32 = flag.apsr;
+        assert_eq!(flag1, flag2);
+    }
 
-#[test]
-fn test_arm_v6_flags_3() {
-    let test_pattern: u32 = 0b0000011111111111111111111111111;
-    let flag: ArmV6m = { ArmV6m::new(test_pattern) };
-    println!("{:?}", flag);
-    assert_eq!(flag.result, 0);
-    assert_eq!(flag.n, 0);
-    assert_eq!(flag.z, 0);
-    assert_eq!(flag.c, 0);
-    assert_eq!(flag.v, 0);
-    assert_eq!(flag.q, 0);
-    assert_eq!(flag.apsr, test_pattern);
-    let flag1: u32 = flag.apsr;
-    let flag2: u32 = flag.flags_to_apsr();
-    assert_eq!(flag1, flag2);
-}
+    #[test]
+    fn test_arm_v6_flags_2() {
+        let flag: ArmV6m = { ArmV6m::new(0) };
+        println!("{:?}", flag);
+        assert_eq!(flag.result, 0);
+        assert_eq!(flag.n, 0);
+        assert_eq!(flag.z, 0);
+        assert_eq!(flag.c, 0);
+        assert_eq!(flag.v, 0);
+        assert_eq!(flag.q, 0);
+        assert_eq!(flag.apsr, 0);
+        let flag1: u32 = flag.flags_to_apsr();
+        let flag2: u32 = flag.apsr;
+        assert_eq!(flag1, flag2);
+    }
 
-#[test]
-fn test_arm_v6_flags_4() {
-    let test_pattern: u32 = 0b1 << 31;
-    let flag: ArmV6m = { ArmV6m::new(test_pattern) };
-    println!("{:?}", flag);
-    assert_eq!(flag.result, 0);
-    assert_eq!(flag.n, 1);
-    assert_eq!(flag.z, 0);
-    assert_eq!(flag.c, 0);
-    assert_eq!(flag.v, 0);
-    assert_eq!(flag.q, 0);
-    assert_eq!(flag.apsr, test_pattern);
-    let flag1: u32 = flag.apsr;
-    let flag2: u32 = flag.flags_to_apsr();
-    assert_eq!(flag1, flag2);
-}
+    #[test]
+    fn test_arm_v6_flags_3() {
+        let test_pattern: u32 = 0b0000011111111111111111111111111;
+        let flag: ArmV6m = { ArmV6m::new(test_pattern) };
+        println!("{:?}", flag);
+        assert_eq!(flag.result, 0);
+        assert_eq!(flag.n, 0);
+        assert_eq!(flag.z, 0);
+        assert_eq!(flag.c, 0);
+        assert_eq!(flag.v, 0);
+        assert_eq!(flag.q, 0);
+        assert_eq!(flag.apsr, test_pattern);
+        let flag1: u32 = flag.flags_to_apsr();
+        let flag2: u32 = flag.apsr;
+        assert_eq!(flag1, flag2);
+    }
 
-#[test]
-fn test_arm_v6_flags_5() {
-    let test_pattern: u32 = 0b1 << 30;
-    let flag: ArmV6m = { ArmV6m::new(test_pattern) };
-    println!("{:?}", flag);
-    assert_eq!(flag.result, 0);
-    assert_eq!(flag.n, 0);
-    assert_eq!(flag.z, 1);
-    assert_eq!(flag.c, 0);
-    assert_eq!(flag.v, 0);
-    assert_eq!(flag.q, 0);
-    assert_eq!(flag.apsr, test_pattern);
-    let flag1: u32 = flag.apsr;
-    let flag2: u32 = flag.flags_to_apsr();
-    assert_eq!(flag1, flag2);
-}
+    #[test]
+    fn test_arm_v6_flags_4() {
+        let test_pattern: u32 = 0b1 << 31;
+        let flag: ArmV6m = { ArmV6m::new(test_pattern) };
+        println!("{:?}", flag);
+        assert_eq!(flag.result, 0);
+        assert_eq!(flag.n, 1);
+        assert_eq!(flag.z, 0);
+        assert_eq!(flag.c, 0);
+        assert_eq!(flag.v, 0);
+        assert_eq!(flag.q, 0);
+        assert_eq!(flag.apsr, test_pattern);
+        let flag1: u32 = flag.flags_to_apsr();
+        let flag2: u32 = flag.apsr;
+        assert_eq!(flag1, flag2);
+    }
 
-#[test]
-fn test_arm_v6_flags_6() {
-    let test_pattern: u32 = 0b1 << 29;
-    let flag: ArmV6m = { ArmV6m::new(test_pattern) };
-    println!("{:?}", flag);
-    assert_eq!(flag.result, 0);
-    assert_eq!(flag.n, 0);
-    assert_eq!(flag.z, 0);
-    assert_eq!(flag.c, 1);
-    assert_eq!(flag.v, 0);
-    assert_eq!(flag.q, 0);
-    assert_eq!(flag.apsr, test_pattern);
-    let flag1: u32 = flag.apsr;
-    let flag2: u32 = flag.flags_to_apsr();
-    assert_eq!(flag1, flag2);
-}
+    #[test]
+    fn test_arm_v6_flags_5() {
+        let test_pattern: u32 = 0b1 << 30;
+        let flag: ArmV6m = { ArmV6m::new(test_pattern) };
+        println!("{:?}", flag);
+        assert_eq!(flag.result, 0);
+        assert_eq!(flag.n, 0);
+        assert_eq!(flag.z, 1);
+        assert_eq!(flag.c, 0);
+        assert_eq!(flag.v, 0);
+        assert_eq!(flag.q, 0);
+        assert_eq!(flag.apsr, test_pattern);
+        let flag1: u32 = flag.flags_to_apsr();
+        let flag2: u32 = flag.apsr;
+        assert_eq!(flag1, flag2);
+    }
 
-#[test]
-fn test_arm_v6_flags_7() {
-    let test_pattern: u32 = 0b1 << 28;
-    let flag: ArmV6m = { ArmV6m::new(test_pattern) };
-    println!("{:?}", flag);
-    assert_eq!(flag.result, 0);
-    assert_eq!(flag.n, 0);
-    assert_eq!(flag.z, 0);
-    assert_eq!(flag.c, 0);
-    assert_eq!(flag.v, 1);
-    assert_eq!(flag.q, 0);
-    assert_eq!(flag.apsr, test_pattern);
-    let flag1: u32 = flag.apsr;
-    let flag2: u32 = flag.flags_to_apsr();
-    assert_eq!(flag1, flag2);
-}
+    #[test]
+    fn test_arm_v6_flags_6() {
+        let test_pattern: u32 = 0b1 << 29;
+        let flag: ArmV6m = { ArmV6m::new(test_pattern) };
+        println!("{:?}", flag);
+        assert_eq!(flag.result, 0);
+        assert_eq!(flag.n, 0);
+        assert_eq!(flag.z, 0);
+        assert_eq!(flag.c, 1);
+        assert_eq!(flag.v, 0);
+        assert_eq!(flag.q, 0);
+        assert_eq!(flag.apsr, test_pattern);
+        let flag1: u32 = flag.flags_to_apsr();
+        let flag2: u32 = flag.apsr;
+        assert_eq!(flag1, flag2);
+    }
 
-#[test]
-fn test_arm_v6_flags_8() {
-    let test_pattern: u32 = 0b1 << 27;
-    let flag: ArmV6m = { ArmV6m::new(test_pattern) };
-    println!("{:?}", flag);
-    assert_eq!(flag.result, 0);
-    assert_eq!(flag.n, 0);
-    assert_eq!(flag.z, 0);
-    assert_eq!(flag.c, 0);
-    assert_eq!(flag.v, 0);
-    assert_eq!(flag.q, 1);
-    assert_eq!(flag.apsr, test_pattern);
-    let flag1: u32 = flag.apsr;
-    let flag2: u32 = flag.flags_to_apsr();
-    assert_eq!(flag1, flag2);
+    #[test]
+    fn test_arm_v6_flags_7() {
+        let test_pattern: u32 = 0b1 << 28;
+        let flag: ArmV6m = { ArmV6m::new(test_pattern) };
+        println!("{:?}", flag);
+        assert_eq!(flag.result, 0);
+        assert_eq!(flag.n, 0);
+        assert_eq!(flag.z, 0);
+        assert_eq!(flag.c, 0);
+        assert_eq!(flag.v, 1);
+        assert_eq!(flag.q, 0);
+        assert_eq!(flag.apsr, test_pattern);
+        let flag1: u32 = flag.flags_to_apsr();
+        let flag2: u32 = flag.apsr;
+        assert_eq!(flag1, flag2);
+    }
+
+    #[test]
+    fn test_arm_v6_flags_8() {
+        let test_pattern: u32 = 0b1 << 27;
+        let flag: ArmV6m = { ArmV6m::new(test_pattern) };
+        println!("{:?}", flag);
+        assert_eq!(flag.result, 0);
+        assert_eq!(flag.n, 0);
+        assert_eq!(flag.z, 0);
+        assert_eq!(flag.c, 0);
+        assert_eq!(flag.v, 0);
+        assert_eq!(flag.q, 1);
+        assert_eq!(flag.apsr, test_pattern);
+        let flag1: u32 = flag.flags_to_apsr();
+        let flag2: u32 = flag.apsr;
+        assert_eq!(flag1, flag2);
+    }
+
+    #[test]
+    fn test_arm_v6_cond_1() {
+        let flag: ArmV6m = { ArmV6m::new(0) };
+        let (_, cond_str) = flag.cond(0b0000);
+        assert_eq!(cond_str, "eq");
+        let (_, cond_str) = flag.cond(0b0001);
+        assert_eq!(cond_str, "ne");
+        let (_, cond_str) = flag.cond(0b0010);
+        assert_eq!(cond_str, "cs");
+        let (_, cond_str) = flag.cond(0b0011);
+        assert_eq!(cond_str, "cc");
+        let (_, cond_str) = flag.cond(0b0100);
+        assert_eq!(cond_str, "mi");
+        let (_, cond_str) = flag.cond(0b0101);
+        assert_eq!(cond_str, "pl");
+        let (_, cond_str) = flag.cond(0b0110);
+        assert_eq!(cond_str, "vs");
+        let (_, cond_str) = flag.cond(0b0111);
+        assert_eq!(cond_str, "vc");
+        let (_, cond_str) = flag.cond(0b1000);
+        assert_eq!(cond_str, "hi");
+        let (_, cond_str) = flag.cond(0b1001);
+        assert_eq!(cond_str, "ls");
+        let (_, cond_str) = flag.cond(0b1010);
+        assert_eq!(cond_str, "ge");
+        let (_, cond_str) = flag.cond(0b1011);
+        assert_eq!(cond_str, "lt");
+        let (_, cond_str) = flag.cond(0b1100);
+        assert_eq!(cond_str, "gt");
+        let (_, cond_str) = flag.cond(0b1101);
+        assert_eq!(cond_str, "le");
+        let (_, cond_str) = flag.cond(0b1110);
+        assert_eq!(cond_str, "al");
+        let (_, cond_str) = flag.cond(0b1111);
+        assert_eq!(cond_str, "*UNDEFINED*");
+    }
+
+    #[test]
+    fn test_arm_v6_cond_2() {
+        let test_cond: u32 = 0b0010;
+        let test_not_cond: u32 = &test_cond | 1;
+        let mut flag: ArmV6m = { ArmV6m::new(0) };
+        flag.c = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
+        flag.c = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+    }
+
+    #[test]
+    fn test_arm_v6_cond_4() {
+        let test_cond: u32 = 0b0100;
+        let test_not_cond: u32 = &test_cond | 1;
+        let mut flag: ArmV6m = { ArmV6m::new(0) };
+        flag.n = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
+        flag.n = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+    }
+
+    #[test]
+    fn test_arm_v6_cond_5() {
+        let test_cond: u32 = 0b0110;
+        let test_not_cond: u32 = &test_cond | 1;
+        let mut flag: ArmV6m = { ArmV6m::new(0) };
+        flag.v = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
+        flag.v = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+    }
+
+    #[test]
+    fn test_arm_v6_cond_3() {
+        let test_cond: u32 = 0;
+        let test_not_cond: u32 = &test_cond | 1;
+        let mut flag: ArmV6m = { ArmV6m::new(0) };
+        flag.z = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
+        flag.z = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+    }
+
+    #[test]
+    fn test_if_then_1() {
+        let if_then: IfThenFlags = { IfThenFlags::default() };
+        assert_eq!(if_then.cond, 0);
+        assert_eq!(if_then.encode, 0);
+        assert_eq!(if_then.epsr, 0);
+
+        assert_eq!(if_then.flags.result, 0);
+        assert_eq!(if_then.flags.n, 0);
+        assert_eq!(if_then.flags.z, 0);
+        assert_eq!(if_then.flags.c, 0);
+        assert_eq!(if_then.flags.v, 0);
+        assert_eq!(if_then.flags.q, 0);
+        assert_eq!(if_then.flags.apsr, 0);
+        let flag1: u32 = if_then.flags.flags_to_apsr();
+        let flag2: u32 = if_then.flags.apsr;
+        assert_eq!(flag1, flag2);
+    }
+
+    #[test]
+    fn test_if_then_2() {
+        let if_then: IfThenFlags = { IfThenFlags::new(0, 0) };
+        assert_eq!(if_then.cond, 0);
+        assert_eq!(if_then.encode, 0);
+        assert_eq!(if_then.epsr, 0);
+    }
 }

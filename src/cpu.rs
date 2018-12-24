@@ -3,6 +3,7 @@ use crate::cpuflag::ArmV6m;
 use crate::cpuflag::CalcFlags;
 use crate::device::SystemMap;
 use crate::device::SystemMapAccess;
+use crate::bitdecode::*;
 
 pub struct CortexM0 {
     pub r: [u32; 13],
@@ -122,7 +123,6 @@ impl SystemCtrl for M0System {
 
 fn get_thumb_instruction(system: &mut M0System) -> u32 {
     let bytecode: u16 = system.system_map.read16(system.cpu.pc).unwrap();
-    let bitcode: u16 = bytecode >> 8;
 
     println!(
         "adrs:{:08x}\t{:04x}({})",
@@ -130,50 +130,44 @@ fn get_thumb_instruction(system: &mut M0System) -> u32 {
         bytecode,
         b16_fmt(bytecode)
     );
+
+    // Ref: Thumb-2SupplementReferenceManual.pdf p.42
+    bitcode_ex!(bytecode, "111**", "11100", instruction_32bit(bytecode, system));
     // Ref: Thumb-2SupplementReferenceManual.pdf p.43
-    match bitcode {
-        0b11011110 => undefined_instruction(bytecode, system),
-        0b11011111 => service_call(bytecode, system),
-        0b01000111 => branch_exchange_instruction_set(bytecode, system),
-        some_8bit => match some_8bit >> 2 {
-            // truncate to 6bit
-            0b000110 => add_substract_register(bytecode, system),
-            0b000111 => add_substract_immediate(bytecode, system),
-            0b010000 => data_processing_register(bytecode, system),
-            0b010001 => special_data_processing(bytecode, system),
-            some_6bit => match some_6bit >> 1 {
-                // truncate to 5bit
-                0b01001 => load_from_literal_pool(bytecode, system),
-                0b01100 => store_word_immediate_offset(bytecode, system),
-                0b01101 => loade_word_immediate_offset(bytecode, system),
-                0b01110 => store_byte_immediate_offset(bytecode, system),
-                0b01111 => loade_byte_immediate_offset(bytecode, system),
-                0b10000 => store_halfward_immediate_offset(bytecode, system),
-                0b10001 => load_halfward_immediate_offset(bytecode, system),
-                0b10010 => store_to_stack(bytecode, system),
-                0b10011 => load_from_stack(bytecode, system),
-                0b10100 => add_to_pc(bytecode, system),
-                0b10101 => add_to_sp(bytecode, system),
-                0b11000 => store_multiple(bytecode, system),
-                0b11001 => load_multiple(bytecode, system),
-                0b11100 => unconditional_branch(bytecode, system),
-                0b11101 => instruction_32bit_11101(bytecode, system),
-                some_5bit => match some_5bit >> 1 {
-                    // truncate to 4bit
-                    0b0101 => load_store_register_offset(bytecode, system),
-                    0b1011 => miscellaneous(bytecode, system),
-                    0b1101 => conditional_branch(bytecode, system),
-                    0b1111 => instruction_32bit_1111(bytecode, system),
-                    some_4bit => match some_4bit >> 1 {
-                        // truncate to 3bit
-                        0b000 => shift_by_immediate_move_register(bytecode, system),
-                        0b001 => add_substract_compare_move_immediate(bytecode, system),
-                        _ => decode_error(bytecode, system),
-                    },
-                },
-            },
-        },
-    }
+
+    // 8bit
+    bitcode!(bytecode, "11011110", undefined_instruction(bytecode, system));
+    bitcode!(bytecode, "11011111", service_call(bytecode, system));
+    bitcode!(bytecode, "01000111", branch_exchange_instruction_set(bytecode, system));
+    // 6bit
+    bitcode!(bytecode, "000110", add_substract_register(bytecode, system));
+    bitcode!(bytecode, "000111", add_substract_immediate(bytecode, system));
+    bitcode!(bytecode, "010000", data_processing_register(bytecode, system));
+    bitcode!(bytecode, "010001", special_data_processing(bytecode, system));
+    // 5bit
+    bitcode!(bytecode, "01001", load_from_literal_pool(bytecode, system));
+    bitcode!(bytecode, "01100", store_word_immediate_offset(bytecode, system));
+    bitcode!(bytecode, "01101", loade_word_immediate_offset(bytecode, system));
+    bitcode!(bytecode, "01110", store_byte_immediate_offset(bytecode, system));
+    bitcode!(bytecode, "01111", loade_byte_immediate_offset(bytecode, system));
+    bitcode!(bytecode, "10000", store_halfward_immediate_offset(bytecode, system));
+    bitcode!(bytecode, "10001", load_halfward_immediate_offset(bytecode, system));
+    bitcode!(bytecode, "10010", store_to_stack(bytecode, system));
+    bitcode!(bytecode, "10011", load_from_stack(bytecode, system));
+    bitcode!(bytecode, "10100", add_to_pc(bytecode, system));
+    bitcode!(bytecode, "10101", add_to_sp(bytecode, system));
+    bitcode!(bytecode, "11000", store_multiple(bytecode, system));
+    bitcode!(bytecode, "11001", load_multiple(bytecode, system));
+    bitcode!(bytecode, "11100", unconditional_branch(bytecode, system));
+    // 4bit
+    bitcode!(bytecode, "0101", load_store_register_offset(bytecode, system));
+    bitcode!(bytecode, "1011", miscellaneous(bytecode, system));
+    bitcode!(bytecode, "1101", conditional_branch(bytecode, system));
+    // 3bit
+    bitcode!(bytecode, "000", shift_by_immediate_move_register(bytecode, system));
+    bitcode!(bytecode, "001", add_substract_compare_move_immediate(bytecode, system));
+
+    decode_error(bytecode, system)
 }
 
 fn b32_fmt(bin: u32) -> String {
@@ -472,26 +466,35 @@ fn unconditional_branch(bytecode: u16, system: &mut M0System) -> u32 {
     not_impremented(system)
 }
 
-// 11101 x[12]
-fn instruction_32bit_11101(bytecode: u16, system: &mut M0System) -> u32 {
-    println!("\t 32-bit instruction (11101)");
-    not_impremented(system)
-}
-
-// 1111 x[13]
-fn instruction_32bit_1111(bytecode: u16, system: &mut M0System) -> u32 {
+// (11101 | 11110 | 11111) x[14]
+fn instruction_32bit(bytecode: u16, system: &mut M0System) -> u32 {
     // Ref: Thumb-2SupplementReferenceManual.pdf p.52
     println!("\t 32-bit instruction (1111)");
     let bytecode32: u32 = system.system_map.read32(system.cpu.pc).unwrap();
     println!("\t bytecode 32bit {:08x}", bytecode32);
-    match (bytecode >> 11) & 0b1 {
-        0b0 => data_processing_instructions_32(bytecode32, system),
-        0b1 => load_and_store_single_data_item_32(bytecode32, system),
+    match (bytecode >> 11) & 0b11 {
+        0b00 => found_bug(bytecode, system),
+        0b01 => {
+            match bytecode >> 6 & 0b1 {
+                //0b0 => load_and_store_32_double_exclusive_table_branch(bytecode32, system),
+                //0b1 => load_and_store_32_multiple_rfe_srs(bytecode32, system),
+                _ => found_bug(bytecode, system),
+            }
+        },
+        0b10 => {
+            match bytecode32 >> 15 & 0b1 {
+                0b0 => data_processing_instructions_32(bytecode32, system),
+                //0b1 => branch_miscellaneous_32(bytecode32, system),
+                _ => found_bug(bytecode, system),
+            }
+        },
+        0b11 => load_and_store_single_data_item_32(bytecode32, system),
         _ => found_bug(bytecode, system),
     }
 }
 
 fn data_processing_instructions_32(bytecode32: u32, system: &mut M0System) -> u32 {
+    println!("\t Data procerssing instructions (32bit)");
     not_impremented(system)
 }
 
@@ -632,3 +635,4 @@ fn sev(bytecode: u16, system: &mut M0System) -> u32 {
     println!("\t sev");
     not_impremented(system)
 }
+

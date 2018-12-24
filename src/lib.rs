@@ -1,3 +1,5 @@
+#[macro_use]
+mod bitdecode;
 mod cpu;
 mod cpuflag;
 mod device;

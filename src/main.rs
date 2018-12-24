@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::Read;
 use std::process::exit;
 
+#[macro_use]
+mod bitdecode;
 mod cpu;
 mod cpuflag;
 mod device;

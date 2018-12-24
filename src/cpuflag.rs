@@ -342,6 +342,23 @@ mod tests {
 
     #[test]
     fn test_arm_v6_cond_2() {
+        let test_cond: u32 = 0;
+        let test_not_cond: u32 = &test_cond | 1;
+        let mut flag: ArmV6m = { ArmV6m::new(0) };
+        flag.z = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
+        flag.z = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+    }
+
+    #[test]
+    fn test_arm_v6_cond_3() {
         let test_cond: u32 = 0b0010;
         let test_not_cond: u32 = &test_cond | 1;
         let mut flag: ArmV6m = { ArmV6m::new(0) };
@@ -392,20 +409,129 @@ mod tests {
     }
 
     #[test]
-    fn test_arm_v6_cond_3() {
-        let test_cond: u32 = 0;
+    fn test_arm_v6_cond_6() {
+        let test_cond: u32 = 0b1000;
         let test_not_cond: u32 = &test_cond | 1;
         let mut flag: ArmV6m = { ArmV6m::new(0) };
         flag.z = 0;
+        flag.c = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+        flag.z = 0;
+        flag.c = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+        flag.z = 1;
+        flag.c = 0;
         let (tf, _) = flag.cond(test_cond);
         assert_eq!(tf, false);
         let (tf, _) = flag.cond(test_not_cond);
         assert_eq!(tf, true);
         flag.z = 1;
+        flag.c = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+    }
+
+    #[test]
+    fn test_arm_v6_cond_7() {
+        let test_cond: u32 = 0b1010;
+        let test_not_cond: u32 = &test_cond | 1;
+        let mut flag: ArmV6m = { ArmV6m::new(0) };
+        flag.n = 0;
+        flag.v = 0;
         let (tf, _) = flag.cond(test_cond);
         assert_eq!(tf, true);
         let (tf, _) = flag.cond(test_not_cond);
         assert_eq!(tf, false);
+        flag.n = 0;
+        flag.v = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
+        flag.n = 1;
+        flag.v = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
+        flag.n = 1;
+        flag.v = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+    }
+
+    #[test]
+    fn test_arm_v6_cond_8() {
+        let test_cond: u32 = 0b1100;
+        let test_not_cond: u32 = &test_cond | 1;
+        let mut flag: ArmV6m = { ArmV6m::new(0) };
+        flag.z = 0;
+        flag.n = 0;
+        flag.v = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+        flag.z = 0;
+        flag.n = 0;
+        flag.v = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+        flag.z = 0;
+        flag.n = 1;
+        flag.v = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, true);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+        flag.z = 0;
+        flag.n = 1;
+        flag.v = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+
+        flag.z = 1;
+        flag.n = 0;
+        flag.v = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
+        flag.z = 1;
+        flag.n = 0;
+        flag.v = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+        flag.z = 1;
+        flag.n = 1;
+        flag.v = 0;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, false);
+        flag.z = 1;
+        flag.n = 1;
+        flag.v = 1;
+        let (tf, _) = flag.cond(test_cond);
+        assert_eq!(tf, false);
+        let (tf, _) = flag.cond(test_not_cond);
+        assert_eq!(tf, true);
     }
 
     #[test]
@@ -433,5 +559,16 @@ mod tests {
         assert_eq!(if_then.cond, 0);
         assert_eq!(if_then.encode, 0);
         assert_eq!(if_then.epsr, 0);
+
+        assert_eq!(if_then.flags.result, 0);
+        assert_eq!(if_then.flags.n, 0);
+        assert_eq!(if_then.flags.z, 0);
+        assert_eq!(if_then.flags.c, 0);
+        assert_eq!(if_then.flags.v, 0);
+        assert_eq!(if_then.flags.q, 0);
+        assert_eq!(if_then.flags.apsr, 0);
+        let flag1: u32 = if_then.flags.flags_to_apsr();
+        let flag2: u32 = if_then.flags.apsr;
+        assert_eq!(flag1, flag2);
     }
 }

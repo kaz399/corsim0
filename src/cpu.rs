@@ -271,8 +271,9 @@ fn special_data_processing(bytecode: u16, system: &mut M0System) -> u32 {
 
 // 01000111 L[1]  Rm[3] 000
 fn branch_exchange_instruction_set(bytecode: u16, system: &mut M0System) -> u32 {
+    // Ref:DDI0403D_arm_architecture_v7m_reference_manual.pdf p.250
     println!("\t Branch/exchange instruction set");
-    not_impremented(system)
+    bx(bytecode, system)
 }
 
 // 01001 Rd[3] PC-relative-imm[8]
@@ -498,7 +499,7 @@ fn service_call(bytecode: u16, system: &mut M0System) -> u32 {
 // 11100 imm[11]
 fn unconditional_branch(bytecode: u16, system: &mut M0System) -> u32 {
     println!("\t Unconditioal Branch");
-    not_impremented(system)
+    b_16(bytecode, system)
 }
 
 // (11101 | 11110 | 11111) x[14]

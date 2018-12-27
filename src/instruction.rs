@@ -28,45 +28,71 @@ pub fn not_impremented(system: &mut M0System) -> u32 {
 }
 
 // instructions: A
-
-pub fn add_sp(system: &mut M0System) -> u32 {
-    println!("\t add sp");
-    not_impremented(system)
-}
-
 // instructions: B
+
+pub fn b_16(bytecode: u16, system: &mut M0System) -> u32 {
+    // Ref:DDI0403D_arm_architecture_v7m_reference_manual.pdf p.239
+    system.cpu.pc += 2;
+    if bytecode & (0b1 << 12) == 0b1 {
+        println!("conditional branch");
+    }
+    else {
+        let field = parse_bit_u(&bytecode, "11100 iiiiiiiiiii").unwrap();
+        let imm11: u32 = field["i"] as u32;
+        let sign_flag: u32 = imm11 >> 10;
+        println!("s:{}", sign_flag);
+        let mut imm32: u32 = 0;
+        if sign_flag == 0b1 {
+            imm32 = 0xffffffff & !0b111111111111;
+            println!("minus imm32:{:08x}", imm32);
+            
+        }
+        imm32 |=  imm11 << 1;
+        println!("imm32:{:08x}", imm32);
+        let next_pc: u32 = system.cpu.pc.wrapping_add(imm32);
+        system.cpu.pc = next_pc;
+
+        println!("\t\t b\t#{:+}\t\t; {:08x}", imm32 as i32, next_pc);
+    }
+    1
+}
 
 pub fn b_32(bytecode32: u32, system: &mut M0System) -> u32 {
     // Ref:DDI0403D_arm_architecture_v7m_reference_manual.pdf p.239
     // Ref: Thumb-2SupplementReferencemanual.pdf p.122
+    system.cpu.pc += 4;
     if bytecode32 & (0b1 << 12) == 0b1 {
         let field = parse_bit_u(&bytecode32, "111110 S iiiiiiiiii 10 j 1 k aaaaaaaaaaa").unwrap();
-        let i1: u32 = !(field["j"] ^ field["S"]);
-        let i2: u32 = !(field["k"] ^ field["S"]);
+        let sign_flag: u32 = field["S"];
+        let i1: u32 = !(field["j"] ^ field["S"]) & 0b1;
+        let i2: u32 = !(field["k"] ^ field["S"]) & 0b1;
         let imm10: u32 = field["i"];
         let imm11: u32 = field["a"];
-
-        let mut imm32: i32 = 0;
-        if field["S"] == 0b1 {
-            imm32 = std::i32::MIN;
+        let mut imm32: u32 = 0;
+        if sign_flag == 0b1 {
+            imm32 = 0xffffffff & !0b111111111111111111111111;
         }
-        let unsigned_31: u32 = i1 << 24 | i2 << 23 | imm10 << 12 | imm11 << 1;
-        imm32 |= unsigned_31 as i32;
-        println!("\t imm32: i32 {}", imm32);
-        println!("\t\t b");
+        imm32 |= i1 << 24 | i2 << 23 | imm10 << 12 | imm11 << 1;
+        let next_pc: u32 = system.cpu.pc.wrapping_add(imm32);
+        system.cpu.pc = next_pc;
+
+        println!("\t\t b\t#{:+}\t\t; {:08x}", imm32 as i32, next_pc);
+    }
+    else {
+        println!("conditional branch");
     }
     1
 }
 
 pub fn bl_32(bytecode32: u32, system: &mut M0System) -> u32 {
     // Ref:DDI0403D_arm_architecture_v7m_reference_manual.pdf p.248
+    system.cpu.pc += 4;
     let field = parse_bit_u(&bytecode32, "11110 S iiiiiiiiii 11 j 1 k aaaaaaaaaaa").unwrap();
     let sign_flag: u32 = field["S"];
     let i1: u32 = !(field["j"] ^ field["S"]) & 0b1;
     let i2: u32 = !(field["k"] ^ field["S"]) & 0b1;
     let imm10: u32 = field["i"];
     let imm11: u32 = field["a"];
-
     let mut imm32: u32 = 0;
     if sign_flag == 0b1 {
         imm32 = 0xffffffff & 0b000000000000000000000000;
@@ -87,6 +113,24 @@ pub fn bkpt(bytecode: u16, system: &mut M0System) -> u32 {
     not_impremented(system)
 }
 
+pub fn bx(bytecode: u16, system: &mut M0System) -> u32 {
+    system.cpu.pc += 2;
+    let field = parse_bit_u(&bytecode, "010001 11 0 mmmm").unwrap();
+    let rm: usize = field["m"] as usize;
+
+    match rm {
+        15 => (),
+        14 => {
+            println!("\t\t bx\tlr");
+            system.cpu.pc = system.cpu.lr & 0xfffffffe;
+        },
+        _ => {
+            println!("\t\t bx\tr{}", rm);
+            system.cpu.pc = system.cpu.r[rm] & 0xfffffffe;
+        },
+    }
+    1
+}
 // instructions: C
 
 pub fn cbz(bytecode: u16, system: &mut M0System) -> u32 {
@@ -167,6 +211,7 @@ pub fn pop(bytecode: u16, system: &mut M0System) -> u32 {
 
 pub fn push(bytecode: u16, system: &mut M0System) -> u32 {
     // Ref: Thumb-2SupplementReferencemanual.pdf p.295
+    system.cpu.pc += 2;
     let reglist: u16 = (bytecode & 0xff) as u16;
     println!("\t push reglist:{}", b16_fmt(reglist));
     if reglist == 0 {
@@ -183,7 +228,7 @@ pub fn push(bytecode: u16, system: &mut M0System) -> u32 {
             }
         }
         assert_eq!(system.cpu.sp[system.cpu.ctrl_spsel], original_sp);
-        system.cpu.pc += 2;
+
         1
     }
 }

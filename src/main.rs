@@ -7,7 +7,9 @@ use std::process::exit;
 mod bitdecode;
 mod cpu;
 mod cpuflag;
+mod debug_info;
 mod device;
+mod instruction;
 
 use crate::cpu::SystemCtrl;
 use crate::device::SystemMapAccess;

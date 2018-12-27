@@ -75,6 +75,8 @@ pub fn bitmatch_upper<T: BitCode>(bitcode: &T, pattern: &str) -> bool {
     let mut mask: u64 = 0;
     let mut pattern_length: usize = 0;
     let mut enable_shift: bool = false;
+
+    // println!("pt:{}", normalized_pattern);
     for c in normalized_pattern.chars() {
         if enable_shift {
             code = code << 1;
@@ -93,7 +95,7 @@ pub fn bitmatch_upper<T: BitCode>(bitcode: &T, pattern: &str) -> bool {
                 enable_shift = true;
                 pattern_length += 1;
             }
-            ' ' | '|' => enable_shift = false,
+            ' ' => enable_shift = false,
             _ => {
                 code = code | 0b0;
                 mask = mask | 0b0;
@@ -101,9 +103,13 @@ pub fn bitmatch_upper<T: BitCode>(bitcode: &T, pattern: &str) -> bool {
                 pattern_length += 1;
             }
         }
+        // println!("c:{} enable_shift:{} len:{}", c, enable_shift, pattern_length);
+        // println!("code:{:0b} mask:{:0b}", code, mask);
     }
+    // println!("code:{:0b} mask:{:0b} bitcode:{:0b}", code, mask, bitcode64);
     code = code << (width - pattern_length);
     mask = mask << (width - pattern_length);
+    // println!("code:{:032b} mask:{:032b} bitcode:{:032b}", code, mask, bitcode64);
     (bitcode64 & mask) == code
 }
 
@@ -132,7 +138,7 @@ pub fn bitmatch_lower<T: BitCode>(bitcode: &T, pattern: &str) -> bool {
                 mask = mask | 0b1;
                 enable_shift = true;
             }
-            ' ' | '|' => enable_shift = false,
+            ' ' => enable_shift = false,
             _ => {
                 code = code | 0b0;
                 mask = mask | 0b0;
@@ -140,6 +146,9 @@ pub fn bitmatch_lower<T: BitCode>(bitcode: &T, pattern: &str) -> bool {
             }
         }
     }
+    // println!(" bitcode64:{:032b} mask:{:032b} code:{:032b}", bitcode64, mask, code);
+    // println!(" bitcode64 & mask:{:032b}", bitcode64 & mask);
+    // println!(" result {}", (bitcode64 & mask) == code);
     (bitcode64 & mask) == code
 }
 
@@ -147,6 +156,7 @@ pub fn check_bitcode_upper<T: BitCode>(bitcode: &T, cond: &str, exclude: &str) -
     let cond_list = cond.split("|");
     let exclude_list = exclude.split("|");
 
+    // println!("cond:{}", cond);
     for ex in exclude_list {
         // println!("ex:{}", ex);
         if bitmatch_upper(bitcode, ex) == true {
@@ -162,13 +172,33 @@ pub fn check_bitcode_upper<T: BitCode>(bitcode: &T, cond: &str, exclude: &str) -
     false
 }
 
-pub fn parse_bit<T: BitCode>(bitcode: &T, format: &str) -> Result<HashMap<String, T>, bool> {
+pub fn check_bitcode_lower<T: BitCode>(bitcode: &T, cond: &str, exclude: &str) -> bool {
+    let cond_list = cond.split("|");
+    let exclude_list = exclude.split("|");
+
+    // println!("cond:{}", cond);
+    for ex in exclude_list {
+        // println!("ex:{}", ex);
+        if bitmatch_lower(bitcode, ex) == true {
+            return false;
+        }
+    }
+    for cd in cond_list {
+        // println!("cd:{}", cd);
+        if bitmatch_lower(bitcode, cd) == true {
+            return true;
+        }
+    }
+    false
+}
+
+pub fn parse_bit_u<T: BitCode>(bitcode: &T, format: &str) -> Result<HashMap<String, T>, bool> {
     let mut result: HashMap<String, T> = HashMap::new();
     let normalized_format: String = format.replace(" ", "");
     let bitcode64: u64 = bitcode.to_64();
     let mut current_bit: usize = bitcode.bit_width() - 1;
 
-    if normalized_format.len() != bitcode.bit_width() {
+    if normalized_format.len() > bitcode.bit_width() {
         return Err(false);
     }
 
@@ -181,20 +211,36 @@ pub fn parse_bit<T: BitCode>(bitcode: &T, format: &str) -> Result<HashMap<String
         // );
         // bit_count += 1;
         match c {
-            '0' | '1' | '_' | ' ' | '|' => (),
-            key => match result.get_mut(&key.to_string()) {
-                Some(value) => {
-                    let mut value64 = value.to_64();
-                    // print!("update '{}':{} -> ", key, value64);
-                    value64 = (value64 << 1) | ((bitcode64 >> current_bit) & 0b1);
-                    // println!("{}", value64);
-                    *value = T::new(value64)
+            '0' | '1' | '_' | ' ' => (),
+            key => {
+                match result.get_mut(&key.to_string()) {
+                    Some(value) => {
+                        let mut value64 = value.to_64();
+                        // print!("update '{}':{} -> ", key, value64);
+                        value64 = (value64 << 1) | ((bitcode64 >> current_bit) & 0b1);
+                        // println!("{}", value64);
+                        *value = T::new(value64)
+                    }
+                    None => {
+                        // println!("new '{}':{} -> ", key, (bitcode64 >> current_bit) & 0b1);
+                        result.insert(key.to_string(), T::new((bitcode64 >> current_bit) & 0b1));
+                    }
                 }
-                None => {
-                    // println!("new '{}':{} -> ", key, (bitcode64 >> current_bit) & 0b1);
-                    result.insert(key.to_string(), T::new((bitcode64 >> current_bit) & 0b1));
+                // "captured" collects all bits
+                match result.get_mut("captured") {
+                    Some(value) => {
+                        let mut value64 = value.to_64();
+                        value64 = (value64 << 1) | ((bitcode64 >> current_bit) & 0b1);
+                        *value = T::new(value64)
+                    }
+                    None => {
+                        result.insert(
+                            "captured".to_string(),
+                            T::new((bitcode64 >> current_bit) & 0b1),
+                        );
+                    }
                 }
-            },
+            }
         }
         if current_bit > 0 {
             current_bit -= 1;
@@ -205,7 +251,7 @@ pub fn parse_bit<T: BitCode>(bitcode: &T, format: &str) -> Result<HashMap<String
 }
 
 #[macro_export]
-macro_rules! bitcode {
+macro_rules! bitcode_u {
     ($bitcode:expr, $bitmatch:expr, $func:expr) => {
         if check_bitcode_upper(&$bitcode, $bitmatch, NO_COND) {
             return $func;
@@ -214,9 +260,27 @@ macro_rules! bitcode {
 }
 
 #[macro_export]
-macro_rules! bitcode_ex {
+macro_rules! bitcode_l {
+    ($bitcode:expr, $bitmatch:expr, $func:expr) => {
+        if check_bitcode_lower(&$bitcode, $bitmatch, NO_COND) {
+            return $func;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! bitcode_u_ex {
     ($bitcode:expr, $bitmatch:expr, $bitexclude:expr, $func:expr) => {
         if check_bitcode_upper(&$bitcode, $bitmatch, $bitexclude) {
+            return $func;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! bitcode_l_ex {
+    ($bitcode:expr, $bitmatch:expr, $bitexclude:expr, $func:expr) => {
+        if check_bitcode_lower(&$bitcode, $bitmatch, $bitexclude) {
             return $func;
         }
     };
@@ -395,9 +459,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bit_1() {
+    fn test_parse_bit_u_1() {
         let bitcode: u32 = 0b11111111101010100101010100000000;
-        match parse_bit(&bitcode, "aaaaaaaabbbbbbbbccccccccdddddddd") {
+        match parse_bit_u(&bitcode, "aaaaaaaabbbbbbbbccccccccdddddddd") {
             Ok(capture) => {
                 println!("{:?}", capture);
                 assert_eq!(capture["a"], 0b11111111);
@@ -405,6 +469,7 @@ mod tests {
                 assert_eq!(capture["c"], 0b01010101);
                 assert_eq!(capture["d"], 0b00000000);
                 assert_eq!(capture.get("e"), None);
+                assert_eq!(capture["captured"], bitcode);
             }
             Err(e) => {
                 assert_eq!(e, true);
@@ -413,9 +478,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bit_2() {
+    fn test_parse_bit_u_2() {
         let bitcode: u16 = 0b1111111100000000;
-        match parse_bit(&bitcode, "aaaaaaaadddddddd") {
+        match parse_bit_u(&bitcode, "aaaaaaaadddddddd") {
             Ok(capture) => {
                 println!("{:?}", capture);
                 assert_eq!(capture["a"], 0b11111111);
@@ -423,6 +488,7 @@ mod tests {
                 assert_eq!(capture.get("c"), None);
                 assert_eq!(capture["d"], 0b00000000);
                 assert_eq!(capture.get("e"), None);
+                assert_eq!(capture.get("captured"), Some(&bitcode));
             }
             Err(e) => {
                 assert_eq!(e, true);
@@ -431,14 +497,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bit_3() {
+    fn test_parse_bit_u_3() {
         let bitcode: u8 = 0b00001111;
-        match parse_bit(&bitcode, "____aaaa") {
+        match parse_bit_u(&bitcode, "____aaaa") {
             Ok(capture) => {
                 println!("{:?}", capture);
                 assert_eq!(capture["a"], 0b1111);
                 assert_eq!(capture.get("b"), None);
                 assert_eq!(capture.get("_"), None);
+                assert_eq!(capture.get("captured"), Some(&0b1111));
             }
             Err(e) => {
                 assert_eq!(e, true);
@@ -447,14 +514,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bit_4() {
+    fn test_parse_bit_u_4() {
         let bitcode: u8 = 0b00001111;
-        match parse_bit(&bitcode, "abababab") {
+        match parse_bit_u(&bitcode, "abababab") {
             Ok(capture) => {
                 println!("{:?}", capture);
                 assert_eq!(capture["a"], 0b0011);
                 assert_eq!(capture.get("b"), Some(&0b0011));
                 assert_eq!(capture.get("_"), None);
+                assert_eq!(capture.get("captured"), Some(&bitcode));
             }
             Err(e) => {
                 assert_eq!(e, true);
@@ -463,33 +531,36 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bit_5() {
+    fn test_parse_bit_u_5() {
         let bitcode: u8 = 0b11001110;
-        match parse_bit(&bitcode, "aa bb ccc b") {
+        match parse_bit_u(&bitcode, "aa bb ccc b") {
             Ok(capture) => {
                 println!("{:?}", capture);
                 assert_eq!(capture["a"], 0b11);
                 assert_eq!(capture.get("b"), Some(&0b000));
                 assert_eq!(capture.get("c"), Some(&0b111));
+                assert_eq!(capture.get("captured"), Some(&bitcode));
             }
             Err(e) => {
                 assert_eq!(e, true);
             }
         }
 
-        match parse_bit(&bitcode, "aaaabbbb") {
+        match parse_bit_u(&bitcode, "aaaabbbb") {
             Ok(capture) => {
                 println!("{:?}", capture);
                 assert_eq!(capture["a"], 0b1100);
                 assert_eq!(capture.get("b"), Some(&0b1110));
+                assert_eq!(capture.get("captured"), Some(&bitcode));
             }
             Err(e) => {
                 assert_eq!(e, true);
             }
         }
 
-        let capture = parse_bit(&bitcode, "aaaabbbb").unwrap();
+        let capture = parse_bit_u(&bitcode, "aaaabbbb").unwrap();
         assert_eq!(capture["a"], 0b1100);
         assert_eq!(capture.get("b"), Some(&0b1110));
+        assert_eq!(capture.get("captured"), Some(&bitcode));
     }
 }

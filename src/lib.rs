@@ -2,7 +2,9 @@
 mod bitdecode;
 mod cpu;
 mod cpuflag;
+mod debug_info;
 mod device;
+mod instruction;
 
 use crate::device::SystemMapAccess;
 
